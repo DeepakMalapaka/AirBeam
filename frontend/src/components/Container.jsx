@@ -14,9 +14,11 @@ const Container = () => {
   const [clientList, setClientList] = useState([]);
   const [myId, setMyId] = useState(null);
   const [targetID, setTargetID] = useState(null);
+  const [isChannelReady, setIsChannelReady] = useState(false);
 
   const peerConnection = useRef(null);
   const dataChannel = useRef(null);
+  const candidateQueue = useRef([]);
 
   // Connect UI only
   const handleConnect = () => {
@@ -34,14 +36,20 @@ const Container = () => {
   };
 
   // Start WebRTC offer
-  const startWebRTC = async () => {
+  const startWebRTC = async (remoteId) => {
     peerConnection.current = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:global.stun.twilio.com:3478" }
+      ],
     });
 
     dataChannel.current = peerConnection.current.createDataChannel("fileChannel");
 
-    dataChannel.current.onopen = () => console.log("DataChannel opened ✔");
+    dataChannel.current.onopen = () => {
+      console.log("DataChannel opened ✔");
+      setIsChannelReady(true);
+    };
     dataChannel.current.onerror = (e) => console.log("DC Error:", e);
 
     peerConnection.current.onicecandidate = (event) => {
@@ -49,8 +57,8 @@ const Container = () => {
         socket.send(
           JSON.stringify({
             type: "signal",
-            from: myId,
-            target: targetID,
+            from: myId || socket.id,
+            target: remoteId,
             candidate: event.candidate,
           })
         );
@@ -64,8 +72,8 @@ const Container = () => {
     socket.send(
       JSON.stringify({
         type: "signal",
-        from: myId,
-        target: targetID,
+        from: myId || socket.id,
+        target: remoteId,
         sdp: offer,
       })
     );
@@ -77,6 +85,17 @@ const Container = () => {
       alert("DataChannel is not ready!");
       return;
     }
+
+    // 1. Send Metadata via Socket (reliable)
+    socket.send(JSON.stringify({
+      type: 'file-meta',
+      target: targetID,
+      metadata: {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      }
+    }));
 
     const chunkSize = 16000;
     const reader = new FileReader();
@@ -97,8 +116,8 @@ const Container = () => {
 
   // Handle socket messages
   useEffect(() => {
-    socket.onmessage = async (msg) => {
-      const data = JSON.parse(msg.data);
+    const handleMessage = async (event) => {
+      const data = JSON.parse(event.data);
       console.log("Sender Received:", data);
 
       if (data.type === "your-id") {
@@ -112,26 +131,53 @@ const Container = () => {
       // Receiver sent answer
       if (data.sdp && data.sdp.type === "answer") {
         await peerConnection.current.setRemoteDescription(data.sdp);
+        // Process queued candidates
+        while (candidateQueue.current.length > 0) {
+          const candidate = candidateQueue.current.shift();
+          await peerConnection.current.addIceCandidate(candidate);
+        }
       }
 
       // ICE candidate
       if (data.candidate) {
         if (peerConnection.current?.remoteDescription) {
           await peerConnection.current.addIceCandidate(data.candidate);
+        } else {
+          candidateQueue.current.push(data.candidate);
         }
       }
+    };
+
+    socket.addEventListener('message', handleMessage);
+
+    // Request client list on mount (in case we missed the initial broadcast)
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'request-client-list' }));
+    } else {
+      socket.addEventListener('open', () => {
+        socket.send(JSON.stringify({ type: 'request-client-list' }));
+      }, { once: true });
+    }
+
+    // Set myId if already available in socket
+    if (socket.id) {
+      setMyId(socket.id);
+    }
+
+    return () => {
+      socket.removeEventListener('message', handleMessage);
     };
   }, []);
 
   return (
     <div
-      className={`w-1/2 min-h-[75vh] border rounded-xl border-dashed p-5
+      className={`w-1/2 min-h-[60vh] border rounded-xl border-dashed p-5
       ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-gray-200"}`}
     >
       <h1 className="font-serif text-2xl my-4 text-center">Local Wi-Fi File Sharing</h1>
 
       {!isConnected && (
-        <div className="flex justify-center">
+        <div className="flex justify-center pb-4">
           <button
             onClick={handleConnect}
             className="bg-blue-600 text-white p-2 rounded-xl font-serif"
@@ -145,7 +191,7 @@ const Container = () => {
         <>
           <p className="text-green-400 text-center font-serif">Connected ✔</p>
 
-          <div className="text-center mt-4">
+          <div className="text-center mt-4 p-4 pb-4">
             Select Receiver:
             <br />
             {clientList
@@ -155,7 +201,7 @@ const Container = () => {
                   key={id}
                   onClick={() => {
                     setTargetID(id);
-                    startWebRTC();
+                    startWebRTC(id);
                   }}
                   className="px-3 py-1 bg-blue-500 text-white rounded mx-2"
                 >
@@ -164,8 +210,8 @@ const Container = () => {
               ))}
 
             {targetID && (
-              <p className="text-green-400 mt-2 font-serif">
-                Connected to Receiver: {targetID}
+              <p className={`mt-2 font-serif ${isChannelReady ? "text-green-400" : "text-yellow-400"}`}>
+                {isChannelReady ? "DataChannel Ready ✔" : "Connecting to Receiver..."}
               </p>
             )}
           </div>
@@ -174,7 +220,7 @@ const Container = () => {
 
       <Border />
 
-      <div className="flex justify-between px-20 mt-4">
+      <div className="flex flex-col items-center gap-4 mt-4">
         <label
           className={`border rounded-xl p-2 font-serif ${
             !isConnected || role !== "sender"
@@ -187,7 +233,7 @@ const Container = () => {
         </label>
 
         <button
-          disabled={!file || !targetID}
+          disabled={!file || !isChannelReady}
           onClick={sendFile}
           className="bg-blue-600 text-white p-2 px-6 rounded-xl font-serif disabled:opacity-30"
         >
@@ -201,8 +247,6 @@ const Container = () => {
           <p><strong>Size:</strong> {(file.size / 1024 / 1024).toFixed(2)} MB</p>
         </div>
       )}
-
-      <Border />
     </div>
   );
 };

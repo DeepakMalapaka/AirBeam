@@ -4,7 +4,7 @@ import sun from "../assets/sun.svg";
 import moon from "../assets/moon.svg";
 import Telegram from "../assets/Telegram.svg";
 
-const Header = () => {
+const Header = ({ myId }) => {
   const { isDark, setIsDark } = useContext(ThemeContext);
 
   return (
@@ -22,6 +22,13 @@ const Header = () => {
       >
         <h1>AirBeam</h1>
         <img src={Telegram} alt="Telegram" className="w-7 h-7 opacity-90" />
+        {myId && (
+          <span className={`text-sm ml-4 px-3 py-1 rounded-full border ${
+            isDark ? "bg-slate-700 border-slate-600 text-slate-300" : "bg-blue-50 border-blue-200 text-blue-600"
+          }`}>
+            ID: {myId}
+          </span>
+        )}
       </div>
 
       <button

@@ -1,6 +1,7 @@
 import React from "react";
-import { useState } from "react";
-import Header from "./components/header";
+import { useState, useEffect } from "react";
+import Header from "./components/Header";
+import socket from "./socket";
 import ThemeContext from "./context/ThemeContext";
 import Border from "./components/Border";
 import Container from "./components/Container";
@@ -10,6 +11,19 @@ import Receiver from "./components/Receiver";
 const App = () => {
   const [isDark, setIsDark] = useState(true);
   const [role, setRole] = useState(null);
+  const [myId, setMyId] = useState(socket.id || null);
+
+  useEffect(() => {
+    const handleMessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === 'your-id') {
+        setMyId(data.id);
+      }
+    };
+
+    socket.addEventListener('message', handleMessage);
+    return () => socket.removeEventListener('message', handleMessage);
+  }, []);
   return (
     <RoleContext.Provider value={{ role, setRole }}>
       <ThemeContext.Provider value={{ isDark, setIsDark }}>
@@ -21,7 +35,7 @@ const App = () => {
       `}
         >
           <Border />
-          <Header />
+          <Header myId={myId} />
           <Border />
           {role === null && <Role />}
           {role === "sender" && (

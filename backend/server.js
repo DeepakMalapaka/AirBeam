@@ -28,6 +28,11 @@ wss.on("connection", (ws) => {
     const data = JSON.parse(msg);
     console.log("Message:", data);
 
+    if (data.type === "request-client-list") {
+      broadcastClients(); // Or just send to ws
+      return;
+    }
+
     if (data.target && clients[data.target]) {
       clients[data.target].send(JSON.stringify(data));
     }
