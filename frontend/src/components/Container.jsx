@@ -47,7 +47,7 @@ const Container = () => {
     dataChannel.current = peerConnection.current.createDataChannel("fileChannel");
 
     dataChannel.current.onopen = () => {
-      console.log("DataChannel opened ✔");
+      console.log("DataChannel opened ");
       setIsChannelReady(true);
     };
     dataChannel.current.onerror = (e) => console.log("DC Error:", e);
