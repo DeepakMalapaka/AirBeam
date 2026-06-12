@@ -108,7 +108,7 @@ const Container = () => {
         dataChannel.current.send(chunk);
       }
 
-      console.log("File sent successfully ✔");
+      console.log("File sent successfully");
     };
 
     reader.readAsArrayBuffer(file);
@@ -189,7 +189,7 @@ const Container = () => {
 
       {isConnected && (
         <>
-          <p className="text-green-400 text-center font-serif">Connected ✔</p>
+          <p className="text-green-400 text-center font-serif">Connected</p>
 
           <div className="text-center mt-4 p-4 pb-4">
             Select Receiver:
@@ -211,7 +211,7 @@ const Container = () => {
 
             {targetID && (
               <p className={`mt-2 font-serif ${isChannelReady ? "text-green-400" : "text-yellow-400"}`}>
-                {isChannelReady ? "DataChannel Ready ✔" : "Connecting to Receiver..."}
+                {isChannelReady ? "DataChannel Ready " : "Connecting to Receiver..."}
               </p>
             )}
           </div>
